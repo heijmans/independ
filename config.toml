@@ -1,0 +1,9 @@
+[server]
+port = 8080
+
+[database]
+source = "independ.db"
+
+[pages]
+path = "pages"
+buttons = ["About"]

@@ -1,0 +1,43 @@
+body, pre {
+    font-family: Courier, monospace;
+}
+
+td, p {
+    max-width: 60rem;
+}
+
+th, td {
+    padding-right: 1rem;
+    vertical-align: baseline;
+}
+
+th {
+    text-align: left;
+    white-space: nowrap;
+}
+
+/* tabs */
+
+.tab-buttons {
+    display: flex;
+    margin: 0.5rem 0;
+}
+
+.tab-button {
+    border: 1px solid #36f;
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+}
+
+.tab-button-active {
+    background-color: #36f;
+    color: white;
+}
+
+.tab {
+    display: none;
+}
+
+.tab-active {
+    display: block;
+}
