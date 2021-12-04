@@ -196,6 +196,9 @@ func Serve(publicFs fs.FS) {
 	r.HandleFunc("/error", func(writer http.ResponseWriter, r *http.Request) { log.Panicln("test panic") })
 	r.HandleFunc("/", homeHandler)
 
+	// for now, redirect unknown packages to npm. doesn't work with . in name, b/o main.css etc
+	r.HandleFunc("/{name:[\\w\\-]+}", packageHandler)
+
 	r.PathPrefix("/").Handler(http.FileServer(http.FS(publicFs)))
 
 	r.Use(PanicRecovery)
