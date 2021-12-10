@@ -1,6 +1,7 @@
 package server
 
 import (
+	"database/sql"
 	"encoding/json"
 	"log"
 	"time"
@@ -98,10 +99,43 @@ func DbPutFile(id string, version *Version) error {
 	}
 	// TODO transaction
 	if _, err = DbGetFile(id); err != nil {
-		_, err = db.Exec("INSERT INTO files (id, content, create_time) VALUES ($1, $2, $3)", id, bytes, time.Now())
+		if err == sql.ErrNoRows {
+			_, err = db.Exec("INSERT INTO files (id, content, create_time) VALUES ($1, $2, $3)", id, bytes, time.Now())
+		}
 	} else {
 		_, err = db.Exec("UPDATE files SET content = $2 WHERE id = $1", id, bytes)
 	}
+	return err
+}
+
+type VulnerabilityRow struct {
+	Id              string
+	Name            string
+	Title           string
+	PublicationTime string `db:"publication_time"`
+	Semver          string
+	Severity        string
+}
+
+func DbLastVulnerability() (*Vulnerability, error) {
+	var row VulnerabilityRow
+	if err := db.Get(&row, "SELECT id, publication_time FROM vulnerabilities ORDER BY publication_time DESC LIMIT 1"); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		} else {
+			return nil, err
+		}
+	}
+	return &Vulnerability{Id: row.Id, PublicationTime: row.PublicationTime}, nil
+}
+
+func DbPutVulnerability(vulnerability Vulnerability) error {
+	bytes, err := json.Marshal(vulnerability.Semver)
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec("INSERT INTO vulnerabilities (id, name, title, publication_time, semver, severity) VALUES ($1, $2, $3, $4, $5, $6)",
+		vulnerability.Id, vulnerability.PackageName, vulnerability.Title, vulnerability.PublicationTime, bytes, vulnerability.Severity)
 	return err
 }
 
@@ -155,6 +189,14 @@ func runMigrations() {
 			Name: "add latest_version",
 			Sql: `
 				ALTER TABLE packages ADD COLUMN latest_version TEXT;
+			`,
+		},
+		{
+			Name: "create vulnerabilities table",
+			Sql: `
+				CREATE TABLE vulnerabilities (id TEXT, name TEXT, title TEXT, publication_time TEXT, semver TEXT, severity TEXT);
+				CREATE UNIQUE INDEX vulnerabilities_id ON vulnerabilities (id);
+				CREATE INDEX vulnerabilities_name ON vulnerabilities (name);
 			`,
 		},
 	})
