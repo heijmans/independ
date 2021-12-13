@@ -184,10 +184,23 @@ func VersionView(version *Version) Node {
 		)
 	}
 
+	var packStats Node
+	if version.Stats.Packages > 1 || version.Stats.Versions > 1 {
+		packStats = H("h3", fmt.Sprintf("packages: %d \u00a0 versions: %d \u00a0 publishers: %d", version.Stats.Packages, version.Stats.Versions, len(version.Publishers)))
+	}
+	var vulnStats Node
+	if len(version.Vulnerabilities) > 0 {
+		vs := version.Stats.VulnerabilityStats
+		vulnStats = H("h3", fmt.Sprintf("vulnerabilities: low %d \u00a0 medium %d \u00a0 high %d \u00a0 critical %d",
+			vs.LowCount, vs.MediumCount, vs.HighCount, vs.CriticalCount))
+	}
 	stats := H("div",
-		H("h3", fmt.Sprintf("packages: %d \u00a0 versions: %d \u00a0 publishers: %d", version.Stats.Packages, version.Stats.Versions, len(version.Publishers))),
+		packStats,
 		H("h3", fmt.Sprintf("files: %d \u00a0 disk space: %.2f MB", version.Stats.Files, float64(version.Stats.DiskSpace)/1e6)),
+		vulnStats,
 	)
+
+	var tabs []Tab
 
 	var depTable Node
 	if len(version.Dependencies) > 0 {
@@ -200,20 +213,39 @@ func VersionView(version *Version) Node {
 			))
 		}
 		depTable = H("table", H("tr", H("th", "name"), H("th", "versions")), dependencies)
+		tabs = append(tabs, Tab{"Dependencies", "dependencies", depTable})
 	}
 
 	var pubTable Node
-	if len(version.Publishers) > 0 {
+	if len(version.Publishers) > 1 {
 		var publishers []Node
 		for _, entry := range sortedMapByIntValue(version.Publishers) {
 			publishers = append(publishers, H("tr", H("td", entry.Key), H("td", entry.Value)))
 		}
 		pubTable = H("table", H("tr", H("th", "publisher"), H("th", "count")), publishers)
+		tabs = append(tabs, Tab{"Publishers", "publishers", pubTable})
 	}
 
-	tabs := []Tab{
-		Tab{"Dependencies", "dependencies", depTable},
-		Tab{"Publishers", "publishers", pubTable},
+	var vulnTable Node
+	if len(version.Vulnerabilities) > 0 {
+		var vulns []Node
+		for _, vulnerability := range version.Vulnerabilities {
+			vulns = append(vulns, H("tr",
+				H("td", H("a href=%s", npmHref(vulnerability.PackageName, ""), vulnerability.PackageName)),
+				H("td", H("a href=%s target=_blank", "https://security.snyk.io/vuln/"+vulnerability.Id, vulnerability.Title)),
+				H("td", string(vulnerability.Severity)),
+				H("td", vulnerability.PublicationTime.Format("2006-01-02")),
+				H("td", strings.Join(vulnerability.Semver.Vulnerable, " ")),
+			))
+		}
+		vulnTable = H("table", H("tr",
+			H("th", "package"),
+			H("th", "title"),
+			H("th", "severity"),
+			H("th", "date"),
+			H("th", "affected"),
+		), vulns)
+		tabs = append(tabs, Tab{"Vulnerabilities", "vulnerabilities", vulnTable})
 	}
 
 	title := info.Name + " " + info.Version + " dependencies"

@@ -3,6 +3,7 @@ package server
 import (
 	"database/sql"
 	"encoding/json"
+	"github.com/pkg/errors"
 	"log"
 	"time"
 
@@ -113,7 +114,7 @@ type VulnerabilityRow struct {
 	Name            string
 	Title           string
 	PublicationTime string `db:"publication_time"`
-	Semver          string
+	Semver          []byte
 	Severity        string
 }
 
@@ -126,7 +127,11 @@ func DbLastVulnerability() (*Vulnerability, error) {
 			return nil, err
 		}
 	}
-	return &Vulnerability{Id: row.Id, PublicationTime: row.PublicationTime}, nil
+	publicationTime, err := time.Parse(time.RFC3339Nano, row.PublicationTime)
+	if err != nil {
+		return nil, errors.Wrapf(err, "could not parse time %s", row.PublicationTime)
+	}
+	return &Vulnerability{Id: row.Id, PublicationTime: publicationTime}, nil
 }
 
 func DbPutVulnerability(vulnerability Vulnerability) error {
@@ -137,6 +142,34 @@ func DbPutVulnerability(vulnerability Vulnerability) error {
 	_, err = db.Exec("INSERT INTO vulnerabilities (id, name, title, publication_time, semver, severity) VALUES ($1, $2, $3, $4, $5, $6)",
 		vulnerability.Id, vulnerability.PackageName, vulnerability.Title, vulnerability.PublicationTime, bytes, vulnerability.Severity)
 	return err
+}
+
+func DbGetVulnerabilitiesForPackages(packages []string) ([]Vulnerability, error) {
+	query, args, err := sqlx.In("SELECT id, name, title, publication_time, semver, severity FROM vulnerabilities WHERE name IN (?) ORDER BY name, publication_time DESC", packages)
+	if err != nil {
+		return nil, errors.Wrap(err, "could not create query for vulnerabilities for a list of packages")
+	}
+	query = db.Rebind(query)
+
+	var rows []VulnerabilityRow
+	if err := db.Select(&rows, query, args...); err != nil {
+		return nil, errors.Wrap(err, "could not get vulnerabilities for a list of packages")
+	}
+	var vulnerabilities []Vulnerability
+	for _, row := range rows {
+		v := Vulnerability{Id: row.Id, PackageName: row.Name, Title: row.Title, Severity: Severity(row.Severity)}
+		v.PublicationTime, err = time.Parse(time.RFC3339Nano, row.PublicationTime)
+		if err != nil {
+			log.Println("could not parse time", row.PublicationTime, err)
+			continue
+		}
+		if err := json.Unmarshal(row.Semver, &v.Semver); err != nil {
+			log.Println("could not unmarschal semver", row.Semver, err)
+			continue
+		}
+		vulnerabilities = append(vulnerabilities, v)
+	}
+	return vulnerabilities, nil
 }
 
 func connect() {

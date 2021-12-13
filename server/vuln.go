@@ -27,7 +27,7 @@ type Vulnerability struct {
 	PackageManager  string     `json:"packageManager"`
 	PackageName     string     `json:"packageName"`
 	Title           string     `json:"title"`
-	PublicationTime string     `json:"publicationTime"`
+	PublicationTime time.Time  `json:"publicationTime"`
 	Semver          SemverSpec `json:"semver"`
 	Severity        Severity   `json:"severity"`
 }
@@ -35,6 +35,13 @@ type Vulnerability struct {
 type VulnerabilityResponse struct {
 	Status          string          `json:"status"`
 	Vulnerabilities []Vulnerability `json:"vulnerabilities"`
+}
+
+type VulnerabilityStats struct {
+	LowCount      int `json:"lowCount"`
+	MediumCount   int `json:"mediumCount"`
+	HighCount     int `json:"highCount"`
+	CriticalCount int `json:"criticalCount"`
 }
 
 func GetVulnerabilities(page int) ([]Vulnerability, error) {
@@ -53,37 +60,60 @@ func GetVulnerabilities(page int) ([]Vulnerability, error) {
 	return response.Vulnerabilities, nil
 }
 
+func GetVulnerabilityStats(vulnerabilities []Vulnerability) VulnerabilityStats {
+	var stats VulnerabilityStats
+	for _, vulnerability := range vulnerabilities {
+		severity := vulnerability.Severity
+		if severity == Low {
+			stats.LowCount++
+		} else if severity == Medium {
+			stats.MediumCount++
+		} else if severity == High {
+			stats.HighCount++
+		} else if severity == Critical {
+			stats.CriticalCount++
+		}
+	}
+	return stats
+}
+
+func UpdateVulnerabilities() {
+	last, err := DbLastVulnerability()
+	if err != nil {
+		log.Println("could not get last vuln", err)
+		return
+	}
+
+	page := 1
+	for {
+		vulnerabilities, err := GetVulnerabilities(page)
+		if err != nil {
+			log.Println("could not get vuln, break", err)
+			return
+		}
+		if len(vulnerabilities) == 0 {
+			log.Println("received all vulns")
+			return
+		}
+		for _, vulnerability := range vulnerabilities {
+			if last != nil && vulnerability.Id == last.Id {
+				log.Println("received known vuln: " + last.Id)
+				return
+			}
+			if err := DbPutVulnerability(vulnerability); err != nil {
+				log.Println("could not put vuln", err)
+			}
+		}
+		page++
+	}
+}
+
 func init() {
 	go func() {
-		time.Sleep(100 * time.Millisecond)
-		last, err := DbLastVulnerability()
-		if err != nil {
-			log.Panicln("could not get last vuln", err)
-		}
-
-		page := 1
-	VulnLoop:
+		time.Sleep(time.Second)
 		for {
-			vulnerabilities, err := GetVulnerabilities(page)
-			if err != nil {
-				log.Println("could not get vuln, break", err)
-				break
-			}
-			if len(vulnerabilities) == 0 {
-				log.Println("received all vulns")
-				break
-			}
-			for _, vulnerability := range vulnerabilities {
-				if last != nil && vulnerability.Id == last.Id {
-					log.Println("received known vuln: " + last.Id)
-					break VulnLoop
-				}
-				err := DbPutVulnerability(vulnerability)
-				if err != nil {
-					log.Println("could not put vuln, break", err)
-				}
-			}
-			page++
+			UpdateVulnerabilities()
+			time.Sleep(4 * time.Hour)
 		}
 	}()
 }

@@ -125,19 +125,21 @@ func (p *PackageInfo) LatestTime() time.Time {
 }
 
 type Stats struct {
-	Packages  int   `json:"packages"`
-	Versions  int   `json:"versions"`
-	Files     int   `json:"files"`
-	DiskSpace int64 `json:"diskSpace"`
+	Packages           int                `json:"packages"`
+	Versions           int                `json:"versions"`
+	Files              int                `json:"files"`
+	DiskSpace          int64              `json:"diskSpace"`
+	VulnerabilityStats VulnerabilityStats `json:"vulnerabilityStats"`
 }
 
 type Version struct {
-	Info         VersionInfo         `json:"info"`
-	Time         time.Time           `json:"time"`
-	Dependencies map[string][]string `json:"dependencies"`
-	Publishers   map[string]int      `json:"publishers"`
-	Stats        Stats               `json:"stats"`
-	Errors       []string            `json:"error"`
+	Info            VersionInfo         `json:"info"`
+	Time            time.Time           `json:"time"`
+	Dependencies    map[string][]string `json:"dependencies"`
+	Publishers      map[string]int      `json:"publishers"`
+	Vulnerabilities []Vulnerability     `json:"vulnerabilities"`
+	Stats           Stats               `json:"stats"`
+	Errors          []string            `json:"error"`
 }
 
 func NewVersion(versionInfo VersionInfo, time time.Time) *Version {
@@ -175,6 +177,52 @@ func HasMatchingVersion(versions []string, constraint *semver.Constraints) bool 
 		}
 	}
 	return ok
+}
+
+func (v *Version) GatherVulnerabilities() error {
+	packageNames := []string{v.Info.Name}
+	for name := range v.Dependencies {
+		packageNames = append(packageNames, name)
+	}
+	allVulnerabilities, err := DbGetVulnerabilitiesForPackages(packageNames)
+	if err != nil {
+		return errors.Wrapf(err, "could not get vulnerabilities for package %s", v.Info.Name)
+	}
+	var vulnerabilities []Vulnerability
+	for _, vulnerability := range allVulnerabilities {
+		match := false
+		name := vulnerability.PackageName
+		var depVersions []string
+		if name == v.Info.Name {
+			depVersions = []string{v.Info.Version}
+		} else {
+			depVersions = v.Dependencies[name]
+		}
+		for _, depVersion := range depVersions {
+			depV, err := semver.NewVersion(depVersion)
+			if err != nil {
+				log.Println("err in version", depVersion, err)
+				continue
+			}
+			for _, expr := range vulnerability.Semver.Vulnerable {
+				c, err := semver.NewConstraint(expr)
+				if err != nil {
+					log.Println("err in constraint", expr, err)
+					continue
+				}
+				if c.Check(depV) {
+					match = true
+				}
+			}
+		}
+		if match {
+			vulnerabilities = append(vulnerabilities, vulnerability)
+		}
+	}
+	v.Vulnerabilities = vulnerabilities
+	v.Stats.VulnerabilityStats = GetVulnerabilityStats(vulnerabilities)
+
+	return nil
 }
 
 func (p VersionInfo) GatherDependencies(parent *Version, alsoDev bool) {
@@ -277,6 +325,9 @@ func (p *PackageInfo) GatherDependencies(versionRaw string) (*Version, error) {
 	}
 	parent := NewVersion(versionInfo, p.Time[versionInfo.Version])
 	versionInfo.GatherDependencies(parent, false)
+	if err := parent.GatherVulnerabilities(); err != nil {
+		return nil, errors.Wrapf(err, "could not gather vulns for %s version %s", p.Name, versionRaw)
+	}
 	return parent, nil
 }
 
