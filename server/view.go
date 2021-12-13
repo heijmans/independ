@@ -188,17 +188,17 @@ func VersionView(version *Version) Node {
 	if version.Stats.Packages > 1 || version.Stats.Versions > 1 {
 		packStats = H("h3", fmt.Sprintf("packages: %d \u00a0 versions: %d \u00a0 publishers: %d", version.Stats.Packages, version.Stats.Versions, len(version.Publishers)))
 	}
+	var sizeStats Node
+	if version.Stats.Files > 0 || version.Stats.DiskSpace > 0 {
+		sizeStats = H("h3", fmt.Sprintf("files: %d \u00a0 disk space: %.2f MB", version.Stats.Files, float64(version.Stats.DiskSpace)/1e6))
+	}
 	var vulnStats Node
 	if len(version.Vulnerabilities) > 0 {
 		vs := version.Stats.VulnerabilityStats
 		vulnStats = H("h3", fmt.Sprintf("vulnerabilities: low %d \u00a0 medium %d \u00a0 high %d \u00a0 critical %d",
 			vs.LowCount, vs.MediumCount, vs.HighCount, vs.CriticalCount))
 	}
-	stats := H("div",
-		packStats,
-		H("h3", fmt.Sprintf("files: %d \u00a0 disk space: %.2f MB", version.Stats.Files, float64(version.Stats.DiskSpace)/1e6)),
-		vulnStats,
-	)
+	stats := H("div", packStats, sizeStats, vulnStats)
 
 	var tabs []Tab
 
@@ -235,7 +235,7 @@ func VersionView(version *Version) Node {
 				H("td", H("a href=%s target=_blank", "https://security.snyk.io/vuln/"+vulnerability.Id, vulnerability.Title)),
 				H("td", string(vulnerability.Severity)),
 				H("td", vulnerability.PublicationTime.Format("2006-01-02")),
-				H("td", strings.Join(vulnerability.Semver.Vulnerable, " ")),
+				H("td", strings.Join(vulnerability.Semver.Vulnerable, " \u00a0 ")),
 			))
 		}
 		vulnTable = H("table", H("tr",

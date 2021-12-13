@@ -3,11 +3,11 @@ package server
 import (
 	"database/sql"
 	"encoding/json"
-	"github.com/pkg/errors"
 	"log"
 	"time"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/pkg/errors"
 )
 
 var db *sqlx.DB
@@ -127,7 +127,7 @@ func DbLastVulnerability() (*Vulnerability, error) {
 			return nil, err
 		}
 	}
-	publicationTime, err := time.Parse(time.RFC3339Nano, row.PublicationTime)
+	publicationTime, err := time.Parse(time.RFC3339, row.PublicationTime)
 	if err != nil {
 		return nil, errors.Wrapf(err, "could not parse time %s", row.PublicationTime)
 	}
@@ -139,8 +139,9 @@ func DbPutVulnerability(vulnerability Vulnerability) error {
 	if err != nil {
 		return err
 	}
+	publicationTime := vulnerability.PublicationTime.Format(time.RFC3339)
 	_, err = db.Exec("INSERT INTO vulnerabilities (id, name, title, publication_time, semver, severity) VALUES ($1, $2, $3, $4, $5, $6)",
-		vulnerability.Id, vulnerability.PackageName, vulnerability.Title, vulnerability.PublicationTime, bytes, vulnerability.Severity)
+		vulnerability.Id, vulnerability.PackageName, vulnerability.Title, publicationTime, bytes, vulnerability.Severity)
 	return err
 }
 
@@ -158,7 +159,7 @@ func DbGetVulnerabilitiesForPackages(packages []string) ([]Vulnerability, error)
 	var vulnerabilities []Vulnerability
 	for _, row := range rows {
 		v := Vulnerability{Id: row.Id, PackageName: row.Name, Title: row.Title, Severity: Severity(row.Severity)}
-		v.PublicationTime, err = time.Parse(time.RFC3339Nano, row.PublicationTime)
+		v.PublicationTime, err = time.Parse(time.RFC3339, row.PublicationTime)
 		if err != nil {
 			log.Println("could not parse time", row.PublicationTime, err)
 			continue
