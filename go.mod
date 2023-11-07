@@ -4,7 +4,7 @@ go 1.16
 
 require (
 	github.com/Masterminds/semver/v3 v3.1.1
-	github.com/gomarkdown/markdown v0.0.0-20211105120026-16f708f914c3
+	github.com/gomarkdown/markdown v0.0.0-20230922105210-14b16010c2ee
 	github.com/gorilla/mux v1.8.0
 	github.com/jmoiron/sqlx v1.3.4
 	github.com/mattn/go-sqlite3 v1.14.9
